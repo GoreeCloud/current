@@ -159,5 +159,13 @@ async def read_feed(feed_name: str):
     # Fail closed: hostname validation does not prevent DNS rebinding.
     if os.getenv("CURRENT_FEED_EGRESS_GUARDED") != "1":
         raise HTTPException(503, "RSS fetching disabled until guarded network egress is configured")
+    # Exact-host allowlist is defense-in-depth, NOT DNS/IP egress enforcement.
+    raw_hosts = os.getenv("CURRENT_FEED_ALLOWED_HOSTS", "")
+    allowed = {host.strip().lower() for host in raw_hosts.split(",") if host.strip()}
+    if not allowed or any(not re.fullmatch(r"[a-z0-9.-]{1,253}", host) for host in allowed):
+        raise HTTPException(503, "RSS hostname allowlist not configured")
+    hostname = urlsplit(feeds[feed_name]).hostname
+    if hostname not in allowed:
+        raise HTTPException(503, "RSS source not explicitly allowlisted")
     data = await get_bounded(feeds[feed_name])
     return {"feed": feed_name, "items": parse_feed(data), "retrieved_at": datetime.now(timezone.utc).isoformat()}
