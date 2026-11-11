@@ -19,8 +19,13 @@ class BoundedTTLCache:
         self._values: OrderedDict[tuple, tuple[float, bytes]] = OrderedDict()
         self._pending: dict[tuple, asyncio.Task[bytes]] = {}
         self._lock = asyncio.Lock()
+        self._capacity = asyncio.Semaphore(max_entries)
 
     async def get_or_fetch(self, key: tuple, fetch: Callable[[], Awaitable[bytes]]) -> bytes:
+        async with self._capacity:
+            return await self._get_or_fetch(key, fetch)
+
+    async def _get_or_fetch(self, key: tuple, fetch: Callable[[], Awaitable[bytes]]) -> bytes:
         async with self._lock:
             now = time.monotonic()
             item = self._values.get(key)
