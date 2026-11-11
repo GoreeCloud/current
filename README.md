@@ -7,9 +7,11 @@ RSS and weather backend for the GoreeCloud ecosystem.
 ## API
 
 - `GET /healthz` — process health
-- `GET /v1/weather?latitude=40.7&longitude=-74` — current conditions and five-day forecast from Open-Meteo
+- `GET /v1/weather?latitude=40.7&longitude=-74` — current conditions and configurable 1–7 day forecast from Open-Meteo
 - `GET /v1/feeds` — configured RSS/Atom feed names
 - `GET /v1/feeds/{feed_name}` — up to 30 parsed entries from an operator-configured RSS/Atom feed
+
+Optional query parameters for weather: `days` (1–7, default 5) and `temperature_unit` (`celsius` or `fahrenheit`). Invalid upstream weather payloads return HTTP 502.
 
 ## Run locally
 
