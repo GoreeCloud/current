@@ -66,27 +66,37 @@ async def weather(
         raise HTTPException(422, "Coordinates must be finite")
     # No persistent location history; cache entries expire and are bounded.
     key = (latitude, longitude, days, temperature_unit)
+
+    def decode_weather(data: bytes) -> dict:
+        try:
+            result = json.loads(data)
+        except (ValueError, UnicodeDecodeError) as exc:
+            raise HTTPException(502, "Invalid weather upstream response") from exc
+        if (not isinstance(result, dict)
+                or not isinstance(result.get("current"), dict)
+                or not isinstance(result.get("daily"), dict)):
+            raise HTTPException(502, "Unexpected weather upstream schema")
+        return result
+
     async def fetch_weather() -> bytes:
-        return await get_bounded(WEATHER_ENDPOINT, params={
-        "latitude": latitude,
-        "longitude": longitude,
-        "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m",
-        "daily": "temperature_2m_max,temperature_2m_min,precipitation_probability_max,weather_code",
-        "timezone": "auto",
-        "forecast_days": days,
-        "temperature_unit": temperature_unit,
-    })
+        data = await get_bounded(WEATHER_ENDPOINT, params={
+            "latitude": latitude,
+            "longitude": longitude,
+            "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m",
+            "daily": "temperature_2m_max,temperature_2m_min,precipitation_probability_max,weather_code",
+            "timezone": "auto",
+            "forecast_days": days,
+            "temperature_unit": temperature_unit,
+        })
+        # Validate before inserting into cache; never cache malformed provider data.
+        decode_weather(data)
+        return data
+
     try:
         data = await weather_cache.get_or_fetch(key, fetch_weather)
     except CacheBusyError as exc:
         raise HTTPException(503, "Weather provider capacity exhausted") from exc
-    try:
-        result = json.loads(data)
-        if not isinstance(result, dict) or not isinstance(result.get("current"), dict) or not isinstance(result.get("daily"), dict):
-            raise HTTPException(502, "Unexpected weather upstream schema")
-        return result
-    except (ValueError, UnicodeDecodeError) as exc:
-        raise HTTPException(502, "Invalid weather upstream response") from exc
+    return decode_weather(data)
 
 
 def configured_feeds() -> dict[str, str]:
