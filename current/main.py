@@ -10,8 +10,9 @@ from urllib.parse import urlsplit
 
 import httpx
 from defusedxml import ElementTree as SafeET
+from defusedxml.common import DefusedXmlException
 
-from current.cache import BoundedTTLCache
+from current.cache import BoundedTTLCache, CacheBusyError
 from current.access import enforce_api_access
 from fastapi import FastAPI, HTTPException, Query
 
@@ -67,7 +68,10 @@ async def weather(
         "forecast_days": days,
         "temperature_unit": temperature_unit,
     })
-    data = await weather_cache.get_or_fetch(key, fetch_weather)
+    try:
+        data = await weather_cache.get_or_fetch(key, fetch_weather)
+    except CacheBusyError as exc:
+        raise HTTPException(503, "Weather provider capacity exhausted") from exc
     try:
         result = json.loads(data)
         if not isinstance(result, dict) or not isinstance(result.get("current"), dict) or not isinstance(result.get("daily"), dict):
@@ -124,7 +128,7 @@ def child_text(node: ET.Element, name: str) -> str:
 def parse_feed(body: bytes) -> list[dict]:
     try:
         root = SafeET.fromstring(body)
-    except (ET.ParseError, ValueError) as exc:
+    except (ET.ParseError, ValueError, DefusedXmlException) as exc:
         raise HTTPException(502, "Invalid RSS or Atom XML") from exc
     if local_name(root.tag) not in ("rss", "feed", "RDF"):
         raise HTTPException(502, "Unsupported feed format")
