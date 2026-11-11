@@ -32,6 +32,14 @@ async def get_bounded(url: str, *, params: dict | None = None) -> bytes:
                 if response.status_code in (301, 302, 303, 307, 308):
                     raise HTTPException(502, "Upstream redirects are disabled")
                 response.raise_for_status()
+                length = response.headers.get("content-length")
+                if length is not None:
+                    try:
+                        declared = int(length)
+                    except ValueError as exc:
+                        raise HTTPException(502, "Invalid upstream content length") from exc
+                    if declared < 0 or declared > MAX_RESPONSE_BYTES:
+                        raise HTTPException(502, "Upstream response too large")
                 body = bytearray()
                 async for chunk in response.aiter_bytes():
                     body.extend(chunk)
@@ -103,6 +111,7 @@ def configured_feeds() -> dict[str, str]:
                 or port not in (None, 443) or parsed.fragment
                 or not re.fullmatch(r"[A-Za-z0-9.-]{1,253}", hostname)
                 or "." not in hostname or hostname.endswith(".")
+                or not all(re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?", label) for label in hostname.split("."))
                 or hostname.lower().endswith((".local", ".internal", ".localhost"))):
             raise HTTPException(503, "Feed registry requires public HTTPS hostnames")
         try:
