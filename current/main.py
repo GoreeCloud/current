@@ -1,0 +1,123 @@
+"""GoreeCloud Current: RSS feeds and weather, with bounded outbound requests."""
+import os
+import xml.etree.ElementTree as ET
+from datetime import datetime, timezone
+from urllib.parse import urlsplit
+
+import httpx
+from defusedxml import ElementTree as SafeET
+from fastapi import FastAPI, HTTPException, Query
+
+app = FastAPI(title="GoreeCloud Current", version="0.1.0")
+MAX_RESPONSE_BYTES = 1_048_576
+TIMEOUT = httpx.Timeout(8.0, connect=3.0)
+WEATHER_ENDPOINT = "https://api.open-meteo.com/v1/forecast"
+
+
+async def get_bounded(url: str, *, params: dict | None = None) -> bytes:
+    """Limit memory, time and redirects for outbound HTTP calls."""
+    async with httpx.AsyncClient(timeout=TIMEOUT, follow_redirects=False, trust_env=False) as client:
+        try:
+            async with client.stream("GET", url, params=params, headers={"User-Agent": "GoreeCloud-Current/0.1"}) as response:
+                response.raise_for_status()
+                if response.status_code in (301, 302, 303, 307, 308):
+                    raise HTTPException(502, "Upstream redirects are disabled")
+                body = bytearray()
+                async for chunk in response.aiter_bytes():
+                    body.extend(chunk)
+                    if len(body) > MAX_RESPONSE_BYTES:
+                        raise HTTPException(502, "Upstream response too large")
+                return bytes(body)
+        except httpx.HTTPError as exc:
+            raise HTTPException(502, "Upstream service unavailable") from exc
+
+
+@app.get("/healthz")
+async def healthz():
+    return {"status": "ok", "service": "GoreeCloud Current"}
+
+
+@app.get("/v1/weather")
+async def weather(
+    latitude: float = Query(ge=-90, le=90),
+    longitude: float = Query(ge=-180, le=180),
+):
+    data = await get_bounded(WEATHER_ENDPOINT, params={
+        "latitude": latitude,
+        "longitude": longitude,
+        "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m",
+        "daily": "temperature_2m_max,temperature_2m_min,precipitation_probability_max,weather_code",
+        "timezone": "auto",
+        "forecast_days": 5,
+    })
+    try:
+        return __import__("json").loads(data)
+    except (ValueError, UnicodeDecodeError) as exc:
+        raise HTTPException(502, "Invalid weather upstream response") from exc
+
+
+def configured_feeds() -> dict[str, str]:
+    """Operator-managed feed registry; never fetch arbitrary user-provided URLs."""
+    import json
+    raw = os.getenv("CURRENT_FEEDS_JSON", "{}")
+    try:
+        feeds = json.loads(raw)
+    except ValueError as exc:
+        raise HTTPException(503, "Feed registry misconfigured") from exc
+    if not isinstance(feeds, dict) or len(feeds) > 32:
+        raise HTTPException(503, "Feed registry misconfigured")
+    for name, url in feeds.items():
+        if not isinstance(name, str) or not name or len(name) > 64 or not isinstance(url, str):
+            raise HTTPException(503, "Feed registry misconfigured")
+        parsed = urlsplit(url)
+        if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password or parsed.port not in (None, 443):
+            raise HTTPException(503, "Feed registry requires HTTPS sources")
+    return feeds
+
+
+def local_name(tag: str) -> str:
+    return tag.rsplit("}", 1)[-1]
+
+
+def child_text(node: ET.Element, name: str) -> str:
+    for child in node:
+        if local_name(child.tag) == name:
+            return (child.text or "").strip()[:2000]
+    return ""
+
+
+def parse_feed(body: bytes) -> list[dict]:
+    try:
+        root = SafeET.fromstring(body)
+    except (ET.ParseError, ValueError) as exc:
+        raise HTTPException(502, "Invalid RSS or Atom XML") from exc
+    if local_name(root.tag) not in ("rss", "feed", "RDF"):
+        raise HTTPException(502, "Unsupported feed format")
+    items = [node for node in root.iter() if local_name(node.tag) in ("item", "entry")]
+    return [
+        {
+            "title": child_text(node, "title"),
+            "link": child_text(node, "link") or next(
+                (child.attrib.get("href", "") for child in node if local_name(child.tag) == "link"), ""
+            ),
+            "published": child_text(node, "pubDate") or child_text(node, "published") or child_text(node, "updated"),
+            "summary": child_text(node, "description") or child_text(node, "summary"),
+        }
+        for node in items[:30]
+    ]
+
+
+@app.get("/v1/feeds")
+async def list_feeds():
+    return {"feeds": sorted(configured_feeds())}
+
+
+@app.get("/v1/feeds/{feed_name}")
+async def read_feed(feed_name: str):
+    feeds = configured_feeds()
+    if feed_name not in feeds:
+        raise HTTPException(404, "Unknown feed")
+    # Operator-controlled sources only. Deploy with network egress policy blocking
+    # private, loopback, link-local, metadata and internal DNS destinations.
+    data = await get_bounded(feeds[feed_name])
+    return {"feed": feed_name, "items": parse_feed(data), "retrieved_at": datetime.now(timezone.utc).isoformat()}
