@@ -19,18 +19,24 @@ Optional query parameters for weather: `days` (1–7, default 5) and `temperatur
 python -m venv .venv
 . .venv/bin/activate
 pip install -e '.[test]'
+# Generate a random 32+ character secret; never commit it.
+export CURRENT_API_KEY="$(python -c 'import secrets; print(secrets.token_urlsafe(32))')"
 export CURRENT_FEEDS_JSON='{"example":"https://example.org/feed.xml"}'
 uvicorn current.main:app --host 127.0.0.1 --port 8000
 pytest -q
 ```
 
-OpenAPI docs: `http://127.0.0.1:8000/docs`.
+OpenAPI docs: `http://127.0.0.1:8000/docs`. API calls to `/v1/*` must include `X-API-Key: <CURRENT_API_KEY>`; without a configured 32+ character key they fail closed with 503. `/healthz` remains unauthenticated.
+
+## Interim API access controls
+
+Versioned endpoints require a minimum 32-character `CURRENT_API_KEY` configured on the server, supplied via `X-API-Key`. Wrong or missing credentials return 401. A conservative process-local 60-request-per-60-second **global** limit returns 429 with `Retry-After`; it is **not** a distributed or per-user quota and can be bypassed across multiple workers. Treat the shared API key as a secret, use TLS at a trusted gateway, and avoid passing it in URLs. This is not yet GoreeCloud Identity integration, OAuth, user-scoped authorization, audit logging, or sufficient public exposure hardening.
 
 ## Security and privacy
 
 The RSS API does not accept arbitrary URLs from callers. Sources are configured by the operator through `CURRENT_FEEDS_JSON`; use only sources you trust. HTTPS and no redirects are enforced. **RSS fetching is disabled by default** and returns HTTP 503. Set `CURRENT_FEED_EGRESS_GUARDED=1` only after independently verifying enforced outbound network isolation; this flag is an operator attestation, not an implemented firewall. Outbound response size is capped at 1 MiB and XML external entities are rejected. **HTTPS validation alone does not prevent DNS rebinding or private-network SSRF**: run this service behind an outbound network firewall/proxy that blocks internal, private, loopback, link-local, and metadata destinations. Do not expose it publicly until this and other deployment controls are in place.
 
-Weather requests send the caller's coordinates to Open-Meteo. Do not submit sensitive precise locations without consent. Weather responses now use a 120-second, 128-entry, in-memory bounded cache with in-flight request coalescing. The cache stores exact coordinates in process memory only until expiry or eviction; it is not a durable history and is not shared across processes. Authentication, external quotas, provider attribution review, monitoring, and egress protections are still required before production use.
+Weather requests send the caller's coordinates to Open-Meteo. Do not submit sensitive precise locations without consent. Weather responses now use a 120-second, 128-entry, in-memory bounded cache with in-flight request coalescing. The cache stores exact coordinates in process memory only until expiry or eviction; it is not a durable history and is not shared across processes. Identity integration, distributed per-client quotas, provider attribution review, monitoring, and egress protections are still required before production use.
 
 ## Cache limits and assumptions
 
