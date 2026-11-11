@@ -1,5 +1,7 @@
 """GoreeCloud Current: RSS feeds and weather, with bounded outbound requests."""
 import os
+import json
+import math
 import ipaddress
 import re
 import xml.etree.ElementTree as ET
@@ -21,9 +23,9 @@ async def get_bounded(url: str, *, params: dict | None = None) -> bytes:
     async with httpx.AsyncClient(timeout=TIMEOUT, follow_redirects=False, trust_env=False) as client:
         try:
             async with client.stream("GET", url, params=params, headers={"User-Agent": "GoreeCloud-Current/0.1"}) as response:
-                response.raise_for_status()
                 if response.status_code in (301, 302, 303, 307, 308):
                     raise HTTPException(502, "Upstream redirects are disabled")
+                response.raise_for_status()
                 body = bytearray()
                 async for chunk in response.aiter_bytes():
                     body.extend(chunk)
@@ -43,24 +45,31 @@ async def healthz():
 async def weather(
     latitude: float = Query(ge=-90, le=90),
     longitude: float = Query(ge=-180, le=180),
+    days: int = Query(default=5, ge=1, le=7),
+    temperature_unit: str = Query(default="celsius", pattern="^(celsius|fahrenheit)$"),
 ):
+    if not math.isfinite(latitude) or not math.isfinite(longitude):
+        raise HTTPException(422, "Coordinates must be finite")
     data = await get_bounded(WEATHER_ENDPOINT, params={
         "latitude": latitude,
         "longitude": longitude,
         "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m",
         "daily": "temperature_2m_max,temperature_2m_min,precipitation_probability_max,weather_code",
         "timezone": "auto",
-        "forecast_days": 5,
+        "forecast_days": days,
+        "temperature_unit": temperature_unit,
     })
     try:
-        return __import__("json").loads(data)
+        result = json.loads(data)
+        if not isinstance(result, dict) or not isinstance(result.get("current"), dict) or not isinstance(result.get("daily"), dict):
+            raise HTTPException(502, "Unexpected weather upstream schema")
+        return result
     except (ValueError, UnicodeDecodeError) as exc:
         raise HTTPException(502, "Invalid weather upstream response") from exc
 
 
 def configured_feeds() -> dict[str, str]:
     """Operator-managed feed registry; never fetch arbitrary user-provided URLs."""
-    import json
     raw = os.getenv("CURRENT_FEEDS_JSON", "{}")
     try:
         feeds = json.loads(raw)
