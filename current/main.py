@@ -10,12 +10,15 @@ from urllib.parse import urlsplit
 
 import httpx
 from defusedxml import ElementTree as SafeET
+
+from current.cache import BoundedTTLCache
 from fastapi import FastAPI, HTTPException, Query
 
 app = FastAPI(title="GoreeCloud Current", version="0.1.0")
 MAX_RESPONSE_BYTES = 1_048_576
 TIMEOUT = httpx.Timeout(8.0, connect=3.0)
 WEATHER_ENDPOINT = "https://api.open-meteo.com/v1/forecast"
+weather_cache = BoundedTTLCache(ttl_seconds=120, max_entries=128, max_value_bytes=MAX_RESPONSE_BYTES)
 
 
 async def get_bounded(url: str, *, params: dict | None = None) -> bytes:
@@ -50,7 +53,10 @@ async def weather(
 ):
     if not math.isfinite(latitude) or not math.isfinite(longitude):
         raise HTTPException(422, "Coordinates must be finite")
-    data = await get_bounded(WEATHER_ENDPOINT, params={
+    # No persistent location history; cache entries expire and are bounded.
+    key = (latitude, longitude, days, temperature_unit)
+    async def fetch_weather() -> bytes:
+        return await get_bounded(WEATHER_ENDPOINT, params={
         "latitude": latitude,
         "longitude": longitude,
         "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m",
@@ -59,6 +65,7 @@ async def weather(
         "forecast_days": days,
         "temperature_unit": temperature_unit,
     })
+    data = await weather_cache.get_or_fetch(key, fetch_weather)
     try:
         result = json.loads(data)
         if not isinstance(result, dict) or not isinstance(result.get("current"), dict) or not isinstance(result.get("daily"), dict):
