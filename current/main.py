@@ -12,9 +12,11 @@ import httpx
 from defusedxml import ElementTree as SafeET
 
 from current.cache import BoundedTTLCache
+from current.access import enforce_api_access
 from fastapi import FastAPI, HTTPException, Query
 
 app = FastAPI(title="GoreeCloud Current", version="0.1.0")
+app.middleware("http")(enforce_api_access)
 MAX_RESPONSE_BYTES = 1_048_576
 TIMEOUT = httpx.Timeout(8.0, connect=3.0)
 WEATHER_ENDPOINT = "https://api.open-meteo.com/v1/forecast"
