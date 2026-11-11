@@ -9,6 +9,10 @@ import time
 from collections import OrderedDict
 from typing import Awaitable, Callable
 
+class CacheBusyError(RuntimeError):
+    """Too many distinct upstream requests are already in flight."""
+
+
 class BoundedTTLCache:
     def __init__(self, *, ttl_seconds: int = 120, max_entries: int = 128, max_value_bytes: int = 1_048_576):
         if ttl_seconds <= 0 or max_entries <= 0 or max_value_bytes <= 0:
@@ -32,6 +36,8 @@ class BoundedTTLCache:
                 del self._values[key]
             task = self._pending.get(key)
             if task is None:
+                if len(self._pending) >= self.max_entries:
+                    raise CacheBusyError("Upstream concurrency limit reached")
                 task = asyncio.create_task(fetch())
                 self._pending[key] = task
                 # Cleanup is owned by the fetch task, even if all callers cancel.
