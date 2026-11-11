@@ -1,5 +1,6 @@
+import pytest
 from fastapi import HTTPException
-from current.main import configured_feeds, parse_feed
+from current.main import configured_feeds, parse_feed, read_feed
 
 
 def test_rss_parse():
@@ -13,13 +14,33 @@ def test_atom_parse():
 
 
 def test_entity_blocked():
-    try:
+    with pytest.raises(Exception):
         parse_feed(b'<!DOCTYPE x [<!ENTITY x SYSTEM "file:///etc/passwd">]><rss><item>&x;</item></rss>')
-        assert False, "Expected entity rejection"
-    except Exception:
-        pass
 
 
 def test_registry(monkeypatch):
     monkeypatch.setenv("CURRENT_FEEDS_JSON", '{"news":"https://example.org/rss"}')
     assert configured_feeds()["news"] == "https://example.org/rss"
+
+
+@pytest.mark.parametrize("url", [
+    "http://example.org/rss", "https://127.0.0.1/rss",
+    "https://169.254.169.254/rss", "https://metadata.internal/rss",
+    "https://example.org:8443/rss", "https://user:password@example.org/rss",
+    "https://example.org:bad/rss", "https://example.org/rss#fragment",
+])
+def test_registry_rejects_unsafe_urls(monkeypatch, url):
+    import json
+    monkeypatch.setenv("CURRENT_FEEDS_JSON", json.dumps({"unsafe": url}))
+    with pytest.raises(HTTPException) as exc:
+        configured_feeds()
+    assert exc.value.status_code == 503
+
+
+@pytest.mark.asyncio
+async def test_feed_fetch_fails_closed(monkeypatch):
+    monkeypatch.setenv("CURRENT_FEEDS_JSON", '{"news":"https://example.org/rss"}')
+    monkeypatch.delenv("CURRENT_FEED_EGRESS_GUARDED", raising=False)
+    with pytest.raises(HTTPException) as exc:
+        await read_feed("news")
+    assert exc.value.status_code == 503
