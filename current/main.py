@@ -1,5 +1,7 @@
 """GoreeCloud Current: RSS feeds and weather, with bounded outbound requests."""
 import os
+import ipaddress
+import re
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from urllib.parse import urlsplit
@@ -69,9 +71,24 @@ def configured_feeds() -> dict[str, str]:
     for name, url in feeds.items():
         if not isinstance(name, str) or not name or len(name) > 64 or not isinstance(url, str):
             raise HTTPException(503, "Feed registry misconfigured")
-        parsed = urlsplit(url)
-        if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password or parsed.port not in (None, 443):
-            raise HTTPException(503, "Feed registry requires HTTPS sources")
+        try:
+            parsed = urlsplit(url)
+            port = parsed.port
+        except ValueError as exc:
+            raise HTTPException(503, "Invalid feed registry URL") from exc
+        hostname = parsed.hostname or ""
+        if (parsed.scheme != "https" or not hostname or parsed.username or parsed.password
+                or port not in (None, 443) or parsed.fragment
+                or not re.fullmatch(r"[A-Za-z0-9.-]{1,253}", hostname)
+                or "." not in hostname or hostname.endswith(".")
+                or hostname.lower().endswith((".local", ".internal", ".localhost"))):
+            raise HTTPException(503, "Feed registry requires public HTTPS hostnames")
+        try:
+            ipaddress.ip_address(hostname)
+        except ValueError:
+            pass
+        else:
+            raise HTTPException(503, "Feed registry rejects IP literals")
     return feeds
 
 
@@ -117,7 +134,8 @@ async def read_feed(feed_name: str):
     feeds = configured_feeds()
     if feed_name not in feeds:
         raise HTTPException(404, "Unknown feed")
-    # Operator-controlled sources only. Deploy with network egress policy blocking
-    # private, loopback, link-local, metadata and internal DNS destinations.
+    # Fail closed: hostname validation does not prevent DNS rebinding.
+    if os.getenv("CURRENT_FEED_EGRESS_GUARDED") != "1":
+        raise HTTPException(503, "RSS fetching disabled until guarded network egress is configured")
     data = await get_bounded(feeds[feed_name])
     return {"feed": feed_name, "items": parse_feed(data), "retrieved_at": datetime.now(timezone.utc).isoformat()}
