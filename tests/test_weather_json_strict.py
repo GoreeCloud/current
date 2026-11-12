@@ -41,3 +41,27 @@ async def test_deeply_nested_weather_json_fails_as_upstream_error(monkeypatch):
             await main.weather(11.5, 21.5, days=2, temperature_unit="celsius")
         assert error.value.status_code == 502
     assert calls == 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("payload", [
+    b'{"current":{},"current":{"temperature_2m":99},"daily":{}}',
+    b'{"current":{"temperature_2m":20,"temperature_2m":99},"daily":{}}',
+    b'{"current":{},"daily":{"time":[],"time":["unexpected"]}}',
+])
+async def test_duplicate_upstream_weather_keys_are_not_cached(monkeypatch, payload):
+    monkeypatch.setattr(main, "weather_cache", BoundedTTLCache())
+    calls = 0
+
+    async def fetch(url, *, params=None):
+        nonlocal calls
+        calls += 1
+        return payload
+
+    monkeypatch.setattr(main, "get_bounded", fetch)
+    for _ in range(2):
+        with pytest.raises(HTTPException) as error:
+            await main.weather(12.5, 34.5, days=2, temperature_unit="celsius")
+        assert error.value.status_code == 502
+        assert "temperature_2m" not in str(error.value.detail)
+    assert calls == 2

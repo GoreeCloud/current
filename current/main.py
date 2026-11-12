@@ -96,7 +96,19 @@ async def weather(
             def reject_nonfinite(value: str):
                 raise ValueError("Non-finite upstream JSON number")
 
-            result = json.loads(data, parse_constant=reject_nonfinite)
+            def reject_duplicate_keys(pairs):
+                values = {}
+                for name, value in pairs:
+                    if name in values:
+                        raise ValueError("Duplicate upstream JSON key")
+                    values[name] = value
+                return values
+
+            result = json.loads(
+                data,
+                parse_constant=reject_nonfinite,
+                object_pairs_hook=reject_duplicate_keys,
+            )
         except (ValueError, UnicodeDecodeError, RecursionError) as exc:
             raise HTTPException(502, "Invalid weather upstream response") from exc
         if (not isinstance(result, dict)
