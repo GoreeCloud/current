@@ -69,8 +69,13 @@ async def weather(
 
     def decode_weather(data: bytes) -> dict:
         try:
-            result = json.loads(data)
-        except (ValueError, UnicodeDecodeError) as exc:
+            # Python accepts NaN/Infinity by default, but they are not valid JSON
+            # numbers and cannot be safely serialized in an API response.
+            def reject_nonfinite(value: str):
+                raise ValueError("Non-finite upstream JSON number")
+
+            result = json.loads(data, parse_constant=reject_nonfinite)
+        except (ValueError, UnicodeDecodeError, RecursionError) as exc:
             raise HTTPException(502, "Invalid weather upstream response") from exc
         if (not isinstance(result, dict)
                 or not isinstance(result.get("current"), dict)
