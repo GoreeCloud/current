@@ -65,3 +65,25 @@ async def test_duplicate_upstream_weather_keys_are_not_cached(monkeypatch, paylo
         assert error.value.status_code == 502
         assert "temperature_2m" not in str(error.value.detail)
     assert calls == 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("invalid", [b'1e999', b'-1e999'])
+async def test_overflowing_upstream_json_floats_are_not_cached(monkeypatch, invalid):
+    # json.loads accepts valid JSON exponent notation even when Python float
+    # conversion overflows to infinity; reject it before caching or responding.
+    monkeypatch.setattr(main, "weather_cache", BoundedTTLCache())
+    calls = 0
+
+    async def fetch(url, *, params=None):
+        nonlocal calls
+        calls += 1
+        return b'{"current":{"temperature_2m":' + invalid + b'},"daily":{"time":[]}}'
+
+    monkeypatch.setattr(main, "get_bounded", fetch)
+    for _ in range(2):
+        with pytest.raises(HTTPException) as error:
+            await main.weather(13.5, 35.5, days=2, temperature_unit="celsius")
+        assert error.value.status_code == 502
+        assert "temperature_2m" not in str(error.value.detail)
+    assert calls == 2
