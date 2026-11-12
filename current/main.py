@@ -41,13 +41,17 @@ async def get_bounded(url: str, *, params: dict | None = None) -> bytes:
                 if response.status_code in (301, 302, 303, 307, 308):
                     raise HTTPException(502, "Upstream redirects are disabled")
                 response.raise_for_status()
-                length = response.headers.get("content-length")
-                if length is not None:
-                    try:
-                        declared = int(length)
-                    except ValueError as exc:
-                        raise HTTPException(502, "Invalid upstream content length") from exc
-                    if declared < 0 or declared > MAX_RESPONSE_BYTES:
+                lengths = response.headers.get_list("content-length")
+                # Reject duplicate or comma-joined values, even when identical.
+                # Different intermediaries may interpret ambiguous lengths differently.
+                if len(lengths) > 1:
+                    raise HTTPException(502, "Invalid upstream content length")
+                if lengths:
+                    length = lengths[0]
+                    if not re.fullmatch(r"[0-9]+", length):
+                        raise HTTPException(502, "Invalid upstream content length")
+                    declared = int(length)
+                    if declared > MAX_RESPONSE_BYTES:
                         raise HTTPException(502, "Upstream response too large")
                 body = bytearray()
                 async for chunk in response.aiter_bytes():
