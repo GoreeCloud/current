@@ -47,10 +47,12 @@ api_limiter = AccessControl()
 async def enforce_api_access(request, call_next):
     if not request.url.path.startswith("/v1/"):
         return await call_next(request)
+    # Weather coordinates and feed selections must not be stored by shared caches.
+    private_headers = {"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"}
     configured = os.getenv("CURRENT_API_KEY", "")
     # Fail closed if the secret is missing, weak, or accidentally whitespace.
     if len(configured) < 32 or configured != configured.strip():
-        return JSONResponse({"detail": "API authentication not configured"}, status_code=503)
+        return JSONResponse({"detail": "API authentication not configured"}, status_code=503, headers=private_headers)
     supplied = request.headers.get("x-api-key", "")
     # Hash both inputs to fixed lengths; avoid timing differences on key length.
     if not hmac.compare_digest(
@@ -60,13 +62,15 @@ async def enforce_api_access(request, call_next):
         return JSONResponse(
             {"detail": "Unauthorized"},
             status_code=401,
-            headers={"WWW-Authenticate": "ApiKey"},
+            headers={**private_headers, "WWW-Authenticate": "ApiKey"},
         )
     allowed, retry_after = await api_limiter.check()
     if not allowed:
         return JSONResponse(
             {"detail": "Rate limit exceeded"},
             status_code=429,
-            headers={"Retry-After": str(retry_after)},
+            headers={**private_headers, "Retry-After": str(retry_after)},
         )
-    return await call_next(request)
+    response = await call_next(request)
+    response.headers.update(private_headers)
+    return response
