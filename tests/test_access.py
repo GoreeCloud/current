@@ -84,3 +84,32 @@ async def test_limiter_rolls_window(monkeypatch):
     assert not await limiter.allow()
     clock[0] += 60
     assert await limiter.allow()
+
+
+@pytest.mark.asyncio
+async def test_authenticated_api_responses_are_not_cacheable(client, monkeypatch):
+    monkeypatch.setenv("CURRENT_API_KEY", KEY)
+    monkeypatch.setenv("CURRENT_FEEDS_JSON", "{}")
+    monkeypatch.setattr(access, "api_limiter", AccessControl(limit=2, window_seconds=60))
+    async with client as c:
+        responses = [
+            await c.get("/v1/feeds", headers={"x-api-key": KEY}),
+            await c.get("/v1/feeds", headers={"x-api-key": "wrong"}),
+            await c.get("/v1/feeds", headers={"x-api-key": KEY}),
+            await c.get("/v1/feeds", headers={"x-api-key": KEY}),
+        ]
+        assert [response.status_code for response in responses] == [200, 401, 200, 429]
+        for response in responses:
+            assert response.headers["cache-control"] == "no-store"
+            assert response.headers["x-content-type-options"] == "nosniff"
+        assert (await c.get("/healthz")).status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_unconfigured_api_response_is_not_cacheable(client, monkeypatch):
+    monkeypatch.delenv("CURRENT_API_KEY", raising=False)
+    async with client as c:
+        response = await c.get("/v1/feeds")
+        assert response.status_code == 503
+        assert response.headers["cache-control"] == "no-store"
+        assert response.headers["x-content-type-options"] == "nosniff"
