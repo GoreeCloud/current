@@ -8,6 +8,7 @@ import hashlib
 import hmac
 import os
 import time
+import math
 
 from starlette.responses import JSONResponse
 
@@ -21,16 +22,23 @@ class AccessControl:
         self._window_start = time.monotonic()
         self._used = 0
 
-    async def allow(self) -> bool:
+    async def check(self) -> tuple[bool, int]:
+        """Atomically consume quota or report seconds until the window resets."""
         async with self._lock:
             now = time.monotonic()
             if now - self._window_start >= self.window_seconds:
                 self._window_start = now
                 self._used = 0
             if self._used >= self.limit:
-                return False
+                remaining = max(1, math.ceil(self.window_seconds - (now - self._window_start)))
+                return False, remaining
             self._used += 1
-            return True
+            return True, 0
+
+    async def allow(self) -> bool:
+        """Compatibility wrapper for existing callers."""
+        allowed, _ = await self.check()
+        return allowed
 
 
 api_limiter = AccessControl()
@@ -54,10 +62,11 @@ async def enforce_api_access(request, call_next):
             status_code=401,
             headers={"WWW-Authenticate": "ApiKey"},
         )
-    if not await api_limiter.allow():
+    allowed, retry_after = await api_limiter.check()
+    if not allowed:
         return JSONResponse(
             {"detail": "Rate limit exceeded"},
             status_code=429,
-            headers={"Retry-After": "60"},
+            headers={"Retry-After": str(retry_after)},
         )
     return await call_next(request)
