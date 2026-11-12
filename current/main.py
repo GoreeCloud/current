@@ -64,6 +64,19 @@ async def healthz():
     return {"status": "ok", "service": "GoreeCloud Current"}
 
 
+@app.get("/readyz")
+async def readyz():
+    """Local configuration readiness, not upstream connectivity or egress proof."""
+    key = os.getenv("CURRENT_API_KEY", "")
+    if len(key) < 32 or key != key.strip():
+        raise HTTPException(503, "Current API authentication is not configured")
+    try:
+        configured_feeds()
+    except HTTPException as exc:
+        raise HTTPException(503, "Current feed configuration is invalid") from exc
+    return {"status": "ready", "service": "GoreeCloud Current"}
+
+
 @app.get("/v1/weather")
 async def weather(
     latitude: float = Query(ge=-90, le=90),
