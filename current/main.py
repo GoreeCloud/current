@@ -108,9 +108,16 @@ async def weather(
                     values[name] = value
                 return values
 
+            def reject_overflowing_float(value: str):
+                number = float(value)
+                if not math.isfinite(number):
+                    raise ValueError("Non-finite upstream JSON number")
+                return number
+
             result = json.loads(
                 data,
                 parse_constant=reject_nonfinite,
+                parse_float=reject_overflowing_float,
                 object_pairs_hook=reject_duplicate_keys,
             )
         except (ValueError, UnicodeDecodeError, RecursionError) as exc:
