@@ -122,7 +122,8 @@ def configured_feeds() -> dict[str, str]:
                 or not re.fullmatch(r"[A-Za-z0-9.-]{1,253}", hostname)
                 or "." not in hostname or hostname.endswith(".")
                 or not all(re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?", label) for label in hostname.split("."))
-                or hostname.lower().endswith((".local", ".internal", ".localhost"))):
+                or hostname.lower().endswith((".local", ".internal", ".localhost"))
+                or hostname.lower() == "localhost"):
             raise HTTPException(503, "Feed registry requires public HTTPS hostnames")
         try:
             ipaddress.ip_address(hostname)
