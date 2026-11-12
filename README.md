@@ -26,7 +26,7 @@ uvicorn current.main:app --host 127.0.0.1 --port 8000
 pytest -q
 ```
 
-OpenAPI docs: `http://127.0.0.1:8000/docs`. API calls to `/v1/*` must include `X-API-Key: <CURRENT_API_KEY>`; without a configured 32+ character key they fail closed with 503. `/healthz` remains unauthenticated.
+OpenAPI documentation is **disabled by default** because the interim API-key middleware does not protect `/docs`, `/redoc`, or `/openapi.json`. For local-only development, set `CURRENT_ENABLE_API_DOCS=1` before starting Uvicorn, then use `http://127.0.0.1:8000/docs`. Do not enable these endpoints on a public or shared deployment without separate gateway access controls. API calls to `/v1/*` must include `X-API-Key: <CURRENT_API_KEY>`; without a configured 32+ character key they fail closed with 503. `/healthz` remains unauthenticated.
 
 ## Interim API access controls
 
