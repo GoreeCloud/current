@@ -53,3 +53,28 @@ async def test_invalid_content_length_rejected(monkeypatch):
     with pytest.raises(HTTPException) as err:
         await get_bounded("https://example.org/feed")
     assert err.value.status_code == 502
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("headers", [
+    [("Content-Length", "4"), ("Content-Length", "4")],
+    [("Content-Length", "4"), ("Content-Length", "5")],
+    {"Content-Length": "4, 4"},
+    {"Content-Length": "+4"},
+    {"Content-Length": " 4"},
+])
+async def test_ambiguous_upstream_content_length_rejected(monkeypatch, headers):
+    original = httpx.AsyncClient
+
+    def fake_client(*args, **kwargs):
+        return original(
+            transport=httpx.MockTransport(
+                lambda request: httpx.Response(200, headers=headers, content=b"tiny")
+            ),
+            **kwargs,
+        )
+
+    monkeypatch.setattr(httpx, "AsyncClient", fake_client)
+    with pytest.raises(HTTPException) as err:
+        await get_bounded("https://example.org/feed")
+    assert err.value.status_code == 502
