@@ -23,6 +23,27 @@ def test_registry(monkeypatch):
     assert configured_feeds()["news"] == "https://example.org/rss"
 
 
+def test_registry_rejects_duplicate_feed_names(monkeypatch):
+    monkeypatch.setenv(
+        "CURRENT_FEEDS_JSON",
+        '{"news":"https://example.org/a","news":"https://example.org/b"}',
+    )
+    with pytest.raises(HTTPException) as exc:
+        configured_feeds()
+    assert exc.value.status_code == 503
+    assert "example.org" not in str(exc.value.detail)
+
+
+def test_registry_rejects_duplicate_nested_json_keys(monkeypatch):
+    monkeypatch.setenv(
+        "CURRENT_FEEDS_JSON",
+        '{"news":"https://example.org/a","meta":{"x":1,"x":2}}',
+    )
+    with pytest.raises(HTTPException) as exc:
+        configured_feeds()
+    assert exc.value.status_code == 503
+
+
 @pytest.mark.parametrize("url", [
     "http://example.org/rss", "https://127.0.0.1/rss",
     "https://169.254.169.254/rss", "https://metadata.internal/rss",
