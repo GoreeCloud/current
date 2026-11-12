@@ -6,7 +6,8 @@ RSS and weather backend for the GoreeCloud ecosystem.
 
 ## API
 
-- `GET /healthz` — process health
+- `GET /healthz` — process health (does not imply configuration readiness)
+- `GET /readyz` — local API-key and feed-registry configuration readiness; returns 503 when misconfigured, without echoing secrets or feed URLs. Does not test external providers, network egress enforcement, or production safety.
 - `GET /v1/weather?latitude=40.7&longitude=-74` — current conditions and configurable 1–7 day forecast from Open-Meteo
 - `GET /v1/feeds` — configured RSS/Atom feed names
 - `GET /v1/feeds/{feed_name}` — up to 30 parsed entries from an operator-configured RSS/Atom feed

@@ -33,6 +33,24 @@ async def test_health_is_public_when_unconfigured(client, monkeypatch):
         assert response.status_code == 503
 
 @pytest.mark.asyncio
+async def test_readiness_requires_valid_key_and_feed_registry(client, monkeypatch):
+    monkeypatch.delenv("CURRENT_API_KEY", raising=False)
+    async with client as c:
+        assert (await c.get("/healthz")).status_code == 200
+        assert (await c.get("/readyz")).status_code == 503
+        monkeypatch.setenv("CURRENT_API_KEY", KEY)
+        monkeypatch.setenv("CURRENT_FEEDS_JSON", "{bad-json")
+        invalid = await c.get("/readyz")
+        assert invalid.status_code == 503
+        assert "bad-json" not in invalid.text
+        monkeypatch.setenv("CURRENT_FEEDS_JSON", '{"news":"https://example.org/rss"}')
+        ready = await c.get("/readyz")
+        assert ready.status_code == 200
+        assert ready.json() == {"status": "ready", "service": "GoreeCloud Current"}
+        assert "news" not in ready.text
+
+
+@pytest.mark.asyncio
 async def test_rejects_weak_or_missing_key(client, monkeypatch):
     monkeypatch.setenv("CURRENT_API_KEY", "weak")
     async with client as c:
