@@ -23,6 +23,18 @@ def test_registry(monkeypatch):
     assert configured_feeds()["news"] == "https://example.org/rss"
 
 
+def test_registry_rejects_oversized_json_before_parsing(monkeypatch):
+    # This is syntactically valid JSON with a single very long feed URL.
+    monkeypatch.setenv(
+        "CURRENT_FEEDS_JSON",
+        '{"news":"https://example.org/' + 'x' * 20_000 + '"}',
+    )
+    with pytest.raises(HTTPException) as exc:
+        configured_feeds()
+    assert exc.value.status_code == 503
+    assert "example.org" not in str(exc.value.detail)
+
+
 def test_registry_rejects_duplicate_feed_names(monkeypatch):
     monkeypatch.setenv(
         "CURRENT_FEEDS_JSON",

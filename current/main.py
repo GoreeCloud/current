@@ -145,6 +145,10 @@ async def weather(
 def configured_feeds() -> dict[str, str]:
     """Operator-managed feed registry; never fetch arbitrary user-provided URLs."""
     raw = os.getenv("CURRENT_FEEDS_JSON", "{}")
+    # Bound untrusted operator configuration before JSON parsing or allocation.
+    if len(raw) > 16_384:
+        raise HTTPException(503, "Feed registry misconfigured")
+
     def reject_duplicate_keys(pairs):
         registry = {}
         for name, url in pairs:
