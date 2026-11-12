@@ -15,6 +15,21 @@ def test_invalid_dns_labels_rejected(monkeypatch, host):
         configured_feeds()
     assert err.value.status_code == 503
 
+@pytest.mark.parametrize("url", [
+    " https://example.org/feed",
+    "https://example.org/feed ",
+    "https://example.org/\nfeed",
+    "https://example.org/\tfeed",
+    "https://example.org/feed\r",
+    "https://example.org/" + "a" * 2048,
+])
+def test_feed_registry_rejects_url_normalization_and_oversized_values(monkeypatch, url):
+    monkeypatch.setenv("CURRENT_FEEDS_JSON", json.dumps({"feed": url}))
+    with pytest.raises(HTTPException) as err:
+        configured_feeds()
+    assert err.value.status_code == 503
+
+
 def test_valid_dns_label(monkeypatch):
     monkeypatch.setenv("CURRENT_FEEDS_JSON", '{"feed":"https://rss-1.example.org/feed"}')
     assert configured_feeds()["feed"].startswith("https://rss-1.")
