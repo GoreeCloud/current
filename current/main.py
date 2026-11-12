@@ -3,6 +3,7 @@ import os
 import json
 import math
 import ipaddress
+import itertools
 import re
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
@@ -150,24 +151,47 @@ def child_text(node: ET.Element, name: str) -> str:
     return ""
 
 
+def safe_article_link(raw: str) -> str:
+    """Expose only bounded, absolute HTTP(S) article URLs from untrusted XML."""
+    if not isinstance(raw, str):
+        return ""
+    raw = raw.strip()
+    if not raw or len(raw) > 2048 or any(ord(c) < 32 or ord(c) == 127 for c in raw):
+        return ""
+    try:
+        parsed = urlsplit(raw)
+        hostname = parsed.hostname
+        port = parsed.port
+    except ValueError:
+        return ""
+    if (parsed.scheme not in ("https", "http") or not hostname
+            or parsed.username is not None or parsed.password is not None
+            or port is not None and not (1 <= port <= 65535)
+            or not parsed.netloc or any(c.isspace() for c in raw)):
+        return ""
+    return raw
+
+
 def parse_feed(body: bytes) -> list[dict]:
+    if not isinstance(body, bytes) or len(body) > MAX_RESPONSE_BYTES:
+        raise HTTPException(502, "Invalid RSS or Atom XML")
     try:
         root = SafeET.fromstring(body)
     except (ET.ParseError, ValueError, DefusedXmlException) as exc:
         raise HTTPException(502, "Invalid RSS or Atom XML") from exc
     if local_name(root.tag) not in ("rss", "feed", "RDF"):
         raise HTTPException(502, "Unsupported feed format")
-    items = [node for node in root.iter() if local_name(node.tag) in ("item", "entry")]
+    items = itertools.islice((node for node in root.iter() if local_name(node.tag) in ("item", "entry")), 30)
     return [
         {
             "title": child_text(node, "title"),
-            "link": child_text(node, "link") or next(
+            "link": safe_article_link(child_text(node, "link") or next(
                 (child.attrib.get("href", "") for child in node if local_name(child.tag) == "link"), ""
-            ),
+            )),
             "published": child_text(node, "pubDate") or child_text(node, "published") or child_text(node, "updated"),
             "summary": child_text(node, "description") or child_text(node, "summary"),
         }
-        for node in items[:30]
+        for node in items
     ]
 
 
