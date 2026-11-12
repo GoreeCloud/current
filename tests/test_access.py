@@ -13,6 +13,17 @@ def client():
     return httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://testserver")
 
 @pytest.mark.asyncio
+async def test_documentation_routes_are_not_public_by_default(client):
+    # OpenAPI and interactive docs must not bypass the /v1 API-key gate.
+    from current.main import _DOCS_ENABLED
+    assert not _DOCS_ENABLED
+    async with client as c:
+        for path in ("/docs", "/redoc", "/openapi.json"):
+            response = await c.get(path)
+            assert response.status_code == 404
+
+
+@pytest.mark.asyncio
 async def test_health_is_public_when_unconfigured(client, monkeypatch):
     monkeypatch.delenv("CURRENT_API_KEY", raising=False)
     async with client as c:

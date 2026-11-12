@@ -17,7 +17,15 @@ from current.cache import BoundedTTLCache, CacheBusyError
 from current.access import enforce_api_access
 from fastapi import FastAPI, HTTPException, Query
 
-app = FastAPI(title="GoreeCloud Current", version="0.1.0")
+# Documentation is opt-in because /docs and /openapi.json are not API-key guarded.
+_DOCS_ENABLED = os.getenv("CURRENT_ENABLE_API_DOCS") == "1"
+app = FastAPI(
+    title="GoreeCloud Current",
+    version="0.1.0",
+    docs_url="/docs" if _DOCS_ENABLED else None,
+    redoc_url="/redoc" if _DOCS_ENABLED else None,
+    openapi_url="/openapi.json" if _DOCS_ENABLED else None,
+)
 app.middleware("http")(enforce_api_access)
 MAX_RESPONSE_BYTES = 1_048_576
 TIMEOUT = httpx.Timeout(8.0, connect=3.0)
