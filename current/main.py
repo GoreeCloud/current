@@ -129,8 +129,16 @@ async def weather(
 def configured_feeds() -> dict[str, str]:
     """Operator-managed feed registry; never fetch arbitrary user-provided URLs."""
     raw = os.getenv("CURRENT_FEEDS_JSON", "{}")
+    def reject_duplicate_keys(pairs):
+        registry = {}
+        for name, url in pairs:
+            if name in registry:
+                raise ValueError("Duplicate feed registry key")
+            registry[name] = url
+        return registry
+
     try:
-        feeds = json.loads(raw)
+        feeds = json.loads(raw, object_pairs_hook=reject_duplicate_keys)
     except ValueError as exc:
         raise HTTPException(503, "Feed registry misconfigured") from exc
     if not isinstance(feeds, dict) or len(feeds) > 32:
