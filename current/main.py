@@ -135,8 +135,13 @@ async def weather(
         # response. Merely finding two empty dictionaries is not sufficient.
         temperature = result["current"].get("temperature_2m")
         dates = result["daily"].get("time")
-        if (type(temperature) not in (int, float)
-                or not math.isfinite(temperature)
+        if type(temperature) not in (int, float):
+            raise HTTPException(502, "Unexpected weather upstream schema")
+        try:
+            temperature_is_finite = math.isfinite(float(temperature))
+        except (OverflowError, ValueError):
+            temperature_is_finite = False
+        if (not temperature_is_finite
                 or not isinstance(dates, list)
                 or not 1 <= len(dates) <= days):
             raise HTTPException(502, "Unexpected weather upstream schema")
