@@ -34,8 +34,8 @@ async def test_duplicate_api_keys_are_rejected_without_consuming_valid_quota(mon
 
 
 @pytest.mark.parametrize("url", [
-    r"https://example.org\\@untrusted.test/feed",
-    r"https://example.org\\feed",
+    r"https://example.org\@untrusted.test/feed",
+    r"https://example.org\feed",
 ])
 def test_ambiguous_backslash_feed_sources_are_rejected(monkeypatch, url):
     import json
@@ -46,8 +46,8 @@ def test_ambiguous_backslash_feed_sources_are_rejected(monkeypatch, url):
 
 
 @pytest.mark.parametrize("url", [
-    r"https://example.org\\@untrusted.test/post",
-    r"https://example.org\\post",
+    r"https://example.org\@untrusted.test/post",
+    r"https://example.org\post",
 ])
 def test_ambiguous_backslash_article_urls_are_omitted(url):
     assert main.safe_article_link(url) == ""
