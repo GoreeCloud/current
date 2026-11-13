@@ -53,7 +53,15 @@ class BoundedTTLCache:
                 self._pending[key] = task
                 # Cleanup is owned by the fetch task, even if all callers cancel.
                 task.add_done_callback(lambda completed, k=key: asyncio.create_task(self._complete(k, completed)))
-        return await asyncio.shield(task)
+        try:
+            return await asyncio.shield(task)
+        finally:
+            # The done callback remains necessary when every waiter cancels,
+            # but a completed request must not require another event-loop
+            # turn to clear a failed task or publish a successful cache entry.
+            # _complete is idempotent because it checks task identity.
+            if task.done():
+                await self._complete(key, task)
 
     async def _complete(self, key: tuple, task: asyncio.Task[bytes]) -> None:
         async with self._lock:
