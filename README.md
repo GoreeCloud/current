@@ -12,7 +12,7 @@ RSS and weather backend for the GoreeCloud ecosystem.
 - `GET /v1/feeds` — configured RSS/Atom feed names
 - `GET /v1/feeds/{feed_name}` — up to 30 parsed entries from an operator-configured RSS/Atom feed; Atom article navigation prefers safe `rel=alternate` links rather than self/edit/enclosure relations
 
-Optional query parameters for weather: `days` (1–7, default 5) and `temperature_unit` (`celsius` or `fahrenheit`). Invalid upstream weather payloads return HTTP 502.
+Optional query parameters for weather: `days` (1–7, default 5) and `temperature_unit` (`celsius` or `fahrenheit`). Malformed weather upstream payloads (including missing or nonnumeric temperature and invalid daily dates) return HTTP 502 and are not cached.
 
 ## Run locally
 
