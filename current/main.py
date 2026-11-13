@@ -277,6 +277,14 @@ def allowed_feed_hosts() -> set[str]:
                     for label in host.split(".")
                 )):
             raise HTTPException(503, "RSS hostname allowlist not configured")
+        # A syntactically valid dotted IPv4 literal must not masquerade as
+        # an operator-approved public DNS hostname.
+        try:
+            ipaddress.ip_address(host)
+        except ValueError:
+            pass
+        else:
+            raise HTTPException(503, "RSS hostname allowlist not configured")
         allowed.add(host)
     return allowed
 
