@@ -173,7 +173,7 @@ def configured_feeds() -> dict[str, str]:
     for name, url in feeds.items():
         if (not isinstance(name, str) or not name or len(name) > 64
                 or not isinstance(url, str) or not url or len(url) > 2048
-                or "\\\\" in url
+                or "\\" in url
                 or any(ord(char) < 33 or ord(char) == 127 for char in url)):
             raise HTTPException(503, "Feed registry misconfigured")
         try:
@@ -215,7 +215,7 @@ def safe_article_link(raw: str) -> str:
     if not isinstance(raw, str):
         return ""
     raw = raw.strip()
-    if not raw or len(raw) > 2048 or "\\\\" in raw or any(ord(c) < 32 or ord(c) == 127 for c in raw):
+    if not raw or len(raw) > 2048 or "\\" in raw or any(ord(c) < 32 or ord(c) == 127 for c in raw):
         return ""
     try:
         parsed = urlsplit(raw)
