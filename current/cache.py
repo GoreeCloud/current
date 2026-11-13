@@ -24,9 +24,20 @@ class BoundedTTLCache:
         self._pending: dict[tuple, asyncio.Task[bytes]] = {}
         self._lock = asyncio.Lock()
 
+    def _prune_expired(self, now: float) -> None:
+        """Drop all expired entries on activity, not just a repeated key.
+
+        No always-on timer or location-bearing persistent store is introduced.
+        The cache is bounded, so the scan is small and deterministic.
+        """
+        for key, (expires_at, _value) in tuple(self._values.items()):
+            if expires_at <= now:
+                del self._values[key]
+
     async def get_or_fetch(self, key: tuple, fetch: Callable[[], Awaitable[bytes]]) -> bytes:
         async with self._lock:
             now = time.monotonic()
+            self._prune_expired(now)
             item = self._values.get(key)
             if item is not None:
                 expires_at, value = item
