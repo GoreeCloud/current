@@ -31,7 +31,7 @@ OpenAPI documentation is **disabled by default** because the interim API-key mid
 
 ## Interim API access controls
 
-Versioned endpoints require a minimum 32-character `CURRENT_API_KEY` configured on the server, supplied via `X-API-Key`. Wrong or missing credentials return 401. A conservative process-local 60-request-per-60-second **global** limit returns 429 with `Retry-After`; it is **not** a distributed or per-user quota and can be bypassed across multiple workers. Treat the shared API key as a secret, use TLS at a trusted gateway, and avoid passing it in URLs. This is not yet GoreeCloud Identity integration, OAuth, user-scoped authorization, audit logging, or sufficient public exposure hardening.
+Versioned endpoints require a minimum 32-character `CURRENT_API_KEY` configured on the server, supplied via `X-API-Key`. Wrong, missing, or duplicate `X-API-Key` header fields return 401. A conservative process-local 60-request-per-60-second **global** limit returns 429 with `Retry-After`; it is **not** a distributed or per-user quota and can be bypassed across multiple workers. Treat the shared API key as a secret, use TLS at a trusted gateway, and avoid passing it in URLs. This is not yet GoreeCloud Identity integration, OAuth, user-scoped authorization, audit logging, or sufficient public exposure hardening.
 
 ## Security and privacy
 
