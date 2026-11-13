@@ -255,6 +255,40 @@ def parse_feed(body: bytes) -> list[dict]:
     ]
 
 
+def allowed_feed_hosts() -> set[str]:
+    """Bound the operator allowlist before parsing; never resolve DNS here.
+
+    This is defense-in-depth only. It cannot replace enforced outbound
+    network isolation or rule out DNS rebinding.
+    """
+    raw = os.getenv("CURRENT_FEED_ALLOWED_HOSTS", "")
+    if not raw or len(raw) > 4096:
+        raise HTTPException(503, "RSS hostname allowlist not configured")
+    parts = raw.split(",")
+    if len(parts) > 32:
+        raise HTTPException(503, "RSS hostname allowlist not configured")
+    allowed: set[str] = set()
+    for part in parts:
+        host = part.strip().lower()
+        if (not host or len(host) > 253 or "." not in host
+                or host.endswith((".local", ".internal", ".localhost"))
+                or not all(
+                    re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?", label)
+                    for label in host.split(".")
+                )):
+            raise HTTPException(503, "RSS hostname allowlist not configured")
+        # A syntactically valid dotted IPv4 literal must not masquerade as
+        # an operator-approved public DNS hostname.
+        try:
+            ipaddress.ip_address(host)
+        except ValueError:
+            pass
+        else:
+            raise HTTPException(503, "RSS hostname allowlist not configured")
+        allowed.add(host)
+    return allowed
+
+
 @app.get("/v1/feeds")
 async def list_feeds():
     return {"feeds": sorted(configured_feeds())}
@@ -269,10 +303,7 @@ async def read_feed(feed_name: str):
     if os.getenv("CURRENT_FEED_EGRESS_GUARDED") != "1":
         raise HTTPException(503, "RSS fetching disabled until guarded network egress is configured")
     # Exact-host allowlist is defense-in-depth, NOT DNS/IP egress enforcement.
-    raw_hosts = os.getenv("CURRENT_FEED_ALLOWED_HOSTS", "")
-    allowed = {host.strip().lower() for host in raw_hosts.split(",") if host.strip()}
-    if not allowed or any(not re.fullmatch(r"[a-z0-9.-]{1,253}", host) for host in allowed):
-        raise HTTPException(503, "RSS hostname allowlist not configured")
+    allowed = allowed_feed_hosts()
     hostname = urlsplit(feeds[feed_name]).hostname
     if hostname not in allowed:
         raise HTTPException(503, "RSS source not explicitly allowlisted")
