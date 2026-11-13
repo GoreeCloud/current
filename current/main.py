@@ -6,7 +6,7 @@ import ipaddress
 import itertools
 import re
 import xml.etree.ElementTree as ET
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from urllib.parse import urlsplit
 
 import httpx
@@ -131,6 +131,23 @@ async def weather(
                 or not isinstance(result.get("current"), dict)
                 or not isinstance(result.get("daily"), dict)):
             raise HTTPException(502, "Unexpected weather upstream schema")
+        # Validate the fields this endpoint promises before caching a provider
+        # response. Merely finding two empty dictionaries is not sufficient.
+        temperature = result["current"].get("temperature_2m")
+        dates = result["daily"].get("time")
+        if (type(temperature) not in (int, float)
+                or not math.isfinite(temperature)
+                or not isinstance(dates, list)
+                or not 1 <= len(dates) <= days):
+            raise HTTPException(502, "Unexpected weather upstream schema")
+        for value in dates:
+            if (not isinstance(value, str)
+                    or not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", value)):
+                raise HTTPException(502, "Unexpected weather upstream schema")
+            try:
+                date.fromisoformat(value)
+            except ValueError as exc:
+                raise HTTPException(502, "Unexpected weather upstream schema") from exc
         return result
 
     async def fetch_weather() -> bytes:
