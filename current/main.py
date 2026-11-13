@@ -14,7 +14,7 @@ from defusedxml import ElementTree as SafeET
 from defusedxml.common import DefusedXmlException
 
 from current.cache import BoundedTTLCache, CacheBusyError
-from current.access import enforce_api_access
+from current.access import enforce_api_access, configured_api_key
 from fastapi import FastAPI, HTTPException, Query
 
 # Documentation is opt-in because /docs and /openapi.json are not API-key guarded.
@@ -71,8 +71,7 @@ async def healthz():
 @app.get("/readyz")
 async def readyz():
     """Local configuration readiness, not upstream connectivity or egress proof."""
-    key = os.getenv("CURRENT_API_KEY", "")
-    if len(key) < 32 or key != key.strip():
+    if configured_api_key() is None:
         raise HTTPException(503, "Current API authentication is not configured")
     try:
         configured_feeds()
