@@ -232,6 +232,25 @@ def safe_article_link(raw: str) -> str:
     return raw
 
 
+def article_link(node: ET.Element) -> str:
+    """Choose an RSS text link or an Atom alternate link, never an edit feed.
+
+    RSS has a text <link> element. Atom may expose self, edit or enclosure
+    links; only the explicitly public alternate relation is a suitable
+    navigation destination. Every candidate still passes URL sanitization.
+    """
+    text_link = child_text(node, "link")
+    if text_link:
+        return safe_article_link(text_link)
+    for child in node:
+        if (local_name(child.tag) == "link"
+                and child.attrib.get("rel", "alternate").strip().lower() == "alternate"):
+            link = safe_article_link(child.attrib.get("href", ""))
+            if link:
+                return link
+    return ""
+
+
 def parse_feed(body: bytes) -> list[dict]:
     if not isinstance(body, bytes) or len(body) > MAX_RESPONSE_BYTES:
         raise HTTPException(502, "Invalid RSS or Atom XML")
@@ -245,9 +264,7 @@ def parse_feed(body: bytes) -> list[dict]:
     return [
         {
             "title": child_text(node, "title"),
-            "link": safe_article_link(child_text(node, "link") or next(
-                (child.attrib.get("href", "") for child in node if local_name(child.tag) == "link"), ""
-            )),
+            "link": article_link(node),
             "published": child_text(node, "pubDate") or child_text(node, "published") or child_text(node, "updated"),
             "summary": child_text(node, "description") or child_text(node, "summary"),
         }
