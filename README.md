@@ -10,7 +10,7 @@ RSS and weather backend for the GoreeCloud ecosystem.
 - `GET /readyz` — local API-key and feed-registry configuration readiness; returns 503 when misconfigured, without echoing secrets or feed URLs. When guarded RSS fetching is configured and nonempty, also checks the exact-host allowlist locally. Does not test external providers, network egress enforcement, or production safety.
 - `GET /v1/weather?latitude=40.7&longitude=-74` — current conditions and configurable 1–7 day forecast from Open-Meteo
 - `GET /v1/feeds` — configured RSS/Atom feed names
-- `GET /v1/feeds/{feed_name}` — up to 30 parsed entries from an operator-configured RSS/Atom feed; Atom article navigation prefers safe `rel=alternate` links rather than self/edit/enclosure relations
+- `GET /v1/feeds/{feed_name}` — up to 30 parsed entries from an operator-configured RSS/Atom feed; Atom article navigation prefers safe `rel=alternate` links rather than self/edit/enclosure relations; IP-literal and explicitly local article destinations are suppressed
 
 Optional query parameters for weather: `days` (1–7, default 5) and `temperature_unit` (`celsius` or `fahrenheit`). Invalid upstream weather payloads return HTTP 502.
 
