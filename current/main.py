@@ -176,6 +176,21 @@ async def weather(
     return decode_weather(data)
 
 
+def numeric_host_alias(host: str) -> bool:
+    """Conservatively reject alternate IPv4-style host spellings.
+
+    Some resolvers accept shortened (127.1), octal, or hexadecimal numeric
+    labels that ipaddress.ip_address rejects. Reject numeric-only label
+    sequences before any RSS URL may reach an HTTP client. This does not
+    replace host DNS/IP pinning or the operator's outbound firewall.
+    """
+    normalized = host.lower().rstrip(".")
+    return bool(re.fullmatch(
+        r"(?:0x[0-9a-f]+|[0-9]+)(?:\.(?:0x[0-9a-f]+|[0-9]+))*",
+        normalized,
+    ))
+
+
 def configured_feeds() -> dict[str, str]:
     """Operator-managed feed registry; never fetch arbitrary user-provided URLs."""
     raw = os.getenv("CURRENT_FEEDS_JSON", "{}")
@@ -216,7 +231,8 @@ def configured_feeds() -> dict[str, str]:
                 or "." not in hostname or hostname.endswith(".")
                 or not all(re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?", label) for label in hostname.split("."))
                 or hostname.lower().endswith((".local", ".internal", ".localhost"))
-                or hostname.lower() == "localhost"):
+                or hostname.lower() == "localhost"
+                or numeric_host_alias(hostname)):
             raise HTTPException(503, "Feed registry requires public HTTPS hostnames")
         try:
             ipaddress.ip_address(hostname)
@@ -265,7 +281,7 @@ def safe_article_link(raw: str) -> str:
             or lowered.endswith((".localhost", ".local", ".internal"))
             # Noncanonical IPv4 spellings may be interpreted as IPs by some
             # HTTP clients despite not being recognized by ipaddress.
-            or re.fullmatch(r"(?:0x[0-9a-f]+|[0-9]+)(?:\.(?:0x[0-9a-f]+|[0-9]+))*", lowered)):
+            or numeric_host_alias(lowered)):
         return ""
     try:
         ipaddress.ip_address(hostname)
@@ -338,8 +354,9 @@ def allowed_feed_hosts() -> set[str]:
                     for label in host.split(".")
                 )):
             raise HTTPException(503, "RSS hostname allowlist not configured")
-        # A syntactically valid dotted IPv4 literal must not masquerade as
-        # an operator-approved public DNS hostname.
+        # Noncanonical numeric hostnames can resolve as IP addresses.
+        if numeric_host_alias(host):
+            raise HTTPException(503, "RSS hostname allowlist not configured")
         try:
             ipaddress.ip_address(host)
         except ValueError:
