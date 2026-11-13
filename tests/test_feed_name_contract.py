@@ -20,7 +20,9 @@ def test_invalid_feed_registry_names_fail_closed(monkeypatch, bad_name):
     with pytest.raises(HTTPException) as error:
         configured_feeds()
     assert error.value.status_code == 503
-    assert bad_name not in str(error.value.detail)
+    # The empty string is a valid substring of every message.
+    if bad_name:
+        assert bad_name not in str(error.value.detail)
 
 
 @pytest.mark.parametrize("good_name", ["news", "tech-weekly", "weather_updates", "a.b", "A1"])
