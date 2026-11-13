@@ -6,6 +6,9 @@ from current.main import safe_article_link, parse_feed
 @pytest.mark.parametrize("url", [
     "http://127.0.0.1/admin",
     "http://127.1/admin",
+    "http://2130706433/admin",
+    "https://0x7f000001/admin",
+    "http://0177.0.0.1/admin",
     "https://169.254.169.254/latest/meta-data/",
     "http://192.168.1.1/",
     "http://10.0.0.1/",
