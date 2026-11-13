@@ -53,7 +53,10 @@ async def enforce_api_access(request, call_next):
     # Fail closed if the secret is missing, weak, or accidentally whitespace.
     if len(configured) < 32 or configured != configured.strip():
         return JSONResponse({"detail": "API authentication not configured"}, status_code=503, headers=private_headers)
-    supplied = request.headers.get("x-api-key", "")
+    # Duplicate credential fields are ambiguous across proxies/intermediaries.
+    # Never authenticate a request with multiple X-API-Key header instances.
+    supplied_keys = request.headers.getlist("x-api-key")
+    supplied = supplied_keys[0] if len(supplied_keys) == 1 else ""
     # Hash both inputs to fixed lengths; avoid timing differences on key length.
     if not hmac.compare_digest(
         hashlib.sha256(supplied.encode("utf-8")).digest(),
