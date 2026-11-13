@@ -171,7 +171,8 @@ def configured_feeds() -> dict[str, str]:
     if not isinstance(feeds, dict) or len(feeds) > 32:
         raise HTTPException(503, "Feed registry misconfigured")
     for name, url in feeds.items():
-        if (not isinstance(name, str) or not name or len(name) > 64
+        if (not isinstance(name, str)
+                or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}", name)
                 or not isinstance(url, str) or not url or len(url) > 2048
                 or "\\" in url
                 or any(ord(char) < 33 or ord(char) == 127 for char in url)):
