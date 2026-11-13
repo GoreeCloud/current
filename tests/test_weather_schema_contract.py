@@ -10,6 +10,7 @@ from current.cache import BoundedTTLCache
 @pytest.mark.parametrize("payload", [
     {"current": {}, "daily": {"time": ["2026-11-13"]}},
     {"current": {"temperature_2m": True}, "daily": {"time": ["2026-11-13"]}},
+    {"current": {"temperature_2m": 10 ** 500}, "daily": {"time": ["2026-11-13"]}},
     {"current": {"temperature_2m": "25"}, "daily": {"time": ["2026-11-13"]}},
     {"current": {"temperature_2m": None}, "daily": {"time": ["2026-11-13"]}},
     {"current": {"temperature_2m": 25}, "daily": {}},
