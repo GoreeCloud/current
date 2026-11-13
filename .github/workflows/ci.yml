@@ -16,3 +16,20 @@ jobs:
       - run: python -m pip install -e '.[test]'
       - run: python -m compileall -q current
       - run: pytest -q
+      - name: Verify wheel includes MIT license
+        run: |
+          python -m pip wheel --no-deps --wheel-dir current-dist .
+          python - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile
+
+          wheels = list(Path("current-dist").glob("goreecloud_current-*.whl"))
+          assert len(wheels) == 1, "Expected one GoreeCloud Current wheel"
+          with ZipFile(wheels[0]) as package:
+              names = package.namelist()
+              licenses = [name for name in names if name.endswith("/licenses/LICENSE")]
+              assert len(licenses) == 1, "Wheel must bundle one MIT LICENSE"
+              assert b"Copyright (c) 2026 GoreeCloud" in package.read(licenses[0])
+              metadata = next(name for name in names if name.endswith(".dist-info/METADATA"))
+              assert "License-Expression: MIT" in package.read(metadata).decode("utf-8")
+          PY
