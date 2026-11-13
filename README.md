@@ -29,6 +29,12 @@ pytest -q
 
 OpenAPI documentation is **disabled by default** because the interim API-key middleware does not protect `/docs`, `/redoc`, or `/openapi.json`. For local-only development, set `CURRENT_ENABLE_API_DOCS=1` before starting Uvicorn, then use `http://127.0.0.1:8000/docs`. Do not enable these endpoints on a public or shared deployment without separate gateway access controls. API calls to `/v1/*` must include `X-API-Key: <CURRENT_API_KEY>`; without a configured 32+ character key they fail closed with 503. `/healthz` remains unauthenticated.
 
+## Container exposure defaults
+
+The default container command now binds Uvicorn to **127.0.0.1 inside the container**. Publishing host ports with `docker run -p` does not make that loopback-only process reachable through the usual bridged container interface. `EXPOSE 8000` is Docker metadata, not an authorization to publish a port. This is an intentional safe development default, **not** a deployment-ready ingress design or outbound firewall.
+
+Any non-loopback bind requires an explicit operator command override, a trusted TLS and GoreeCloud Identity gateway, separately enforced outbound network isolation, and a verified deployment acceptance plan. The application still lacks distributed rate limits, SSRF-safe egress, and production network testing. Do not use `0.0.0.0` merely to make the container reachable without those controls.
+
 ## Interim API access controls
 
 Versioned endpoints require a 32–512-byte UTF-8 `CURRENT_API_KEY` configured on the server, supplied via `X-API-Key`. Wrong, missing, or duplicate `X-API-Key` header fields return 401. A conservative process-local 60-request-per-60-second **global** limit returns 429 with `Retry-After`; it is **not** a distributed or per-user quota and can be bypassed across multiple workers. Treat the shared API key as a secret, use TLS at a trusted gateway, and avoid passing it in URLs. This is not yet GoreeCloud Identity integration, OAuth, user-scoped authorization, audit logging, or sufficient public exposure hardening.
