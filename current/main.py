@@ -75,7 +75,13 @@ async def readyz():
     if len(key) < 32 or key != key.strip():
         raise HTTPException(503, "Current API authentication is not configured")
     try:
-        configured_feeds()
+        feeds = configured_feeds()
+        # Readiness only checks local operator configuration. It cannot prove
+        # actual IP-level egress enforcement or upstream connectivity.
+        if feeds and os.getenv("CURRENT_FEED_EGRESS_GUARDED") == "1":
+            allowed = allowed_feed_hosts()
+            if any(urlsplit(url).hostname not in allowed for url in feeds.values()):
+                raise HTTPException(503, "RSS source is not allowlisted")
     except HTTPException as exc:
         raise HTTPException(503, "Current feed configuration is invalid") from exc
     return {"status": "ready", "service": "GoreeCloud Current"}
