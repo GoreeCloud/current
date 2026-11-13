@@ -239,7 +239,11 @@ def safe_article_link(raw: str) -> str:
     # DNS resolution is not done here; a public-looking name can still
     # resolve to a private address, so consumers need independent controls.
     lowered = hostname.lower().rstrip(".")
-    if lowered == "localhost" or lowered.endswith((".localhost", ".local", ".internal")):
+    if (lowered == "localhost"
+            or lowered.endswith((".localhost", ".local", ".internal"))
+            # Noncanonical IPv4 spellings may be interpreted as IPs by some
+            # HTTP clients despite not being recognized by ipaddress.
+            or re.fullmatch(r"(?:0x[0-9a-f]+|[0-9]+)(?:\.(?:0x[0-9a-f]+|[0-9]+))*", lowered)):
         return ""
     try:
         ipaddress.ip_address(hostname)
