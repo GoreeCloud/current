@@ -234,6 +234,23 @@ def safe_article_link(raw: str) -> str:
             or port is not None and not (1 <= port <= 65535)
             or not parsed.netloc or any(c.isspace() for c in raw)):
         return ""
+    # RSS links are untrusted navigation data. Avoid handing the browser a
+    # literal IP or explicitly local hostname as an article destination.
+    # DNS resolution is not done here; a public-looking name can still
+    # resolve to a private address, so consumers need independent controls.
+    lowered = hostname.lower().rstrip(".")
+    if (lowered == "localhost"
+            or lowered.endswith((".localhost", ".local", ".internal"))
+            # Noncanonical IPv4 spellings may be interpreted as IPs by some
+            # HTTP clients despite not being recognized by ipaddress.
+            or re.fullmatch(r"(?:0x[0-9a-f]+|[0-9]+)(?:\.(?:0x[0-9a-f]+|[0-9]+))*", lowered)):
+        return ""
+    try:
+        ipaddress.ip_address(hostname)
+    except ValueError:
+        pass
+    else:
+        return ""
     return raw
 
 
