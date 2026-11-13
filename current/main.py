@@ -28,6 +28,8 @@ app = FastAPI(
 )
 app.middleware("http")(enforce_api_access)
 MAX_RESPONSE_BYTES = 1_048_576
+MAX_FEED_XML_NODES = 4096
+MAX_FEED_XML_DEPTH = 32
 TIMEOUT = httpx.Timeout(8.0, connect=3.0)
 WEATHER_ENDPOINT = "https://api.open-meteo.com/v1/forecast"
 weather_cache = BoundedTTLCache(ttl_seconds=120, max_entries=128, max_value_bytes=MAX_RESPONSE_BYTES)
@@ -304,6 +306,20 @@ def parse_feed(body: bytes) -> list[dict]:
         raise HTTPException(502, "Invalid RSS or Atom XML") from exc
     if local_name(root.tag) not in ("rss", "feed", "RDF"):
         raise HTTPException(502, "Unsupported feed format")
+    # An XML body under 1 MiB can still contain tens of thousands of tiny
+    # elements or deeply nested wrappers. Bound both *before* collecting
+    # article fields. Iterative traversal avoids additional Python recursion.
+    stack = [(root, 1)]
+    seen = 0
+    while stack:
+        node, depth = stack.pop()
+        seen += 1
+        if seen > MAX_FEED_XML_NODES or depth > MAX_FEED_XML_DEPTH:
+            raise HTTPException(502, "Invalid RSS or Atom XML")
+        for child in node:
+            stack.append((child, depth + 1))
+        if seen + len(stack) > MAX_FEED_XML_NODES:
+            raise HTTPException(502, "Invalid RSS or Atom XML")
     items = itertools.islice((node for node in root.iter() if local_name(node.tag) in ("item", "entry")), 30)
     return [
         {
