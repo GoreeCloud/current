@@ -49,4 +49,4 @@ GoreeCloud Mesh coordinates API integration, GoreeShield governs location/privac
 
 ## License
 
-License selection and third-party notices remain to be reviewed; do not assume an open-source license is granted merely because this repository is public.
+The GoreeCloud Current first-party source is licensed under the MIT License in [LICENSE](LICENSE). Third-party dependencies retain their own licenses and notices; the repository license does not override those obligations. This is a development preview, not proof of license compliance for a future bundled deployment.
